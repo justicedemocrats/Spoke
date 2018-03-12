@@ -84,7 +84,6 @@ export const resolvers = {
     textingHoursStart: (organization) => organization.texting_hours_start,
     textingHoursEnd: (organization) => organization.texting_hours_end,
     osdiEnabled: async (organization, _, { user }) => {
-      await accessRequired(user, organization.id, 'ADMIN')
       return tryFeatureParse(organization, 'osdiEnabled', false)
     },
     osdiApiUrl: async (organization, _, { user }) => {
