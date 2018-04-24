@@ -291,7 +291,9 @@ class AdminCampaignEdit extends React.Component {
       extraProps: {
         optOuts: [], // this.props.organizationData.organization.optOuts, // <= doesn't scale
         datawarehouseAvailable: this.props.campaignData.campaign.datawarehouseAvailable,
-        jobResultMessage: ((this.props.pendingJobsData.campaign.pendingJobs.filter((job) => (/contacts/.test(job.jobType)))[0] || {}).resultMessage || '')
+        osdiEnabled: this.props.organizationData.organization.osdiEnabled,
+        jobResultMessage: ((this.props.pendingJobsData.campaign.pendingJobs.filter((job) => (/contacts/.test(job.jobType)))[0] || {}).resultMessage || ''),
+        organizationId: this.props.organizationData.organization.id
       }
     }, {
       title: 'Texters',
@@ -603,6 +605,7 @@ const mapQueriesToProps = ({ ownProps }) => ({
       organization(id: $organizationId) {
         id
         uuid
+        osdiEnabled
         texters: people(role: $role) {
           id
           firstName

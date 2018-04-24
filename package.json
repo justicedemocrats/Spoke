@@ -8,7 +8,7 @@
     "npm": "3.10.10"
   },
   "scripts": {
-    "test": "jest",
+    "test": "jest --no-watchman",
     "test-coverage": "jest --coverage",
     "test-coverage-bothbackends": "jest --config just.config.sqlite.js &&  jest --coverage",
     "clean": "rm -rf $OUTPUT_DIR",

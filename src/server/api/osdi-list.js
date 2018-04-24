@@ -22,3 +22,15 @@ export const schema = `
     total_items: Int
   }
 `
+
+const simple = attr => obj => obj[attr]
+
+export const resolvers = {
+  OsdiList: {
+    name: simple('name'),
+    id: simple('id'),
+    identifiers: simple('identifiers'),
+    summary: simple('summary'),
+    total_items: simple('total_items')
+  }
+}

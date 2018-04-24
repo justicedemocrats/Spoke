@@ -1,8 +1,19 @@
-import { r, datawarehouse, Assignment, Campaign, CampaignContact, Organization, User } from '../server/models'
+import {
+  r,
+  datawarehouse,
+  Assignment,
+  Campaign,
+  CampaignContact,
+  Organization,
+  User
+} from '../server/models'
 import { log, gunzip, zipToTimeZone, convertOffsetsToStrings } from '../lib'
 import { updateJob } from './lib'
 import serviceMap from '../server/api/lib/services'
-import { getLastMessage, saveNewIncomingMessage } from '../server/api/lib/message-sending'
+import {
+  getLastMessage,
+  saveNewIncomingMessage
+} from '../server/api/lib/message-sending'
 
 import AWS from 'aws-sdk'
 import Papa from 'papaparse'
@@ -22,7 +33,9 @@ async function getTimezoneByZip(zip) {
   }
   const zipDatum = await r.table('zip_code').get(zip)
   if (zipDatum && zipDatum.timezone_offset && zipDatum.has_dst) {
-    zipMemoization[zip] = convertOffsetsToStrings([[zipDatum.timezone_offset, zipDatum.has_dst]])[0]
+    zipMemoization[zip] = convertOffsetsToStrings([
+      [zipDatum.timezone_offset, zipDatum.has_dst]
+    ])[0]
     return zipMemoization[zip]
   }
   return ''
@@ -50,7 +63,7 @@ export async function processSqsMessages() {
     ReceiveRequestAttemptId: 'string'
   }
 
-  const p = new Promise
+  const p = new Promise()
 
   sqs.receiveMessage(params, async (err, data) => {
     if (err) {
@@ -58,7 +71,7 @@ export async function processSqsMessages() {
       p.reject(err)
     } else if (data.Messages) {
       console.log(data)
-      for (let i = 0; i < data.Messages.length; i ++) {
+      for (let i = 0; i < data.Messages.length; i++) {
         const message = data.Messages[i]
         const body = message.Body
         console.log('processing sqs queue:', body)
@@ -66,14 +79,19 @@ export async function processSqsMessages() {
 
         await serviceMap.twilio.handleIncomingMessage(twilioMessage)
 
-        sqs.deleteMessage({ QueueUrl: process.env.TWILIO_SQS_QUEUE_URL, ReceiptHandle: message.ReceiptHandle },
-                          (err, data) => {
-                            if (err) {
-                              console.log(err, err.stack) // an error occurred
-                            } else {
-                              console.log(data) // successful response
-                            }
-                          })
+        sqs.deleteMessage(
+          {
+            QueueUrl: process.env.TWILIO_SQS_QUEUE_URL,
+            ReceiptHandle: message.ReceiptHandle
+          },
+          (err, data) => {
+            if (err) {
+              console.log(err, err.stack) // an error occurred
+            } else {
+              console.log(data) // successful response
+            }
+          }
+        )
       }
       p.resolve()
     }
@@ -91,7 +109,8 @@ export async function uploadContacts(job) {
 
   const jobMessages = []
 
-  await r.table('campaign_contact')
+  await r
+    .table('campaign_contact')
     .getAll(campaignId, { index: 'campaign_id' })
     .delete()
   const maxPercentage = 100
@@ -99,11 +118,15 @@ export async function uploadContacts(job) {
   const chunkSize = 1000
   contacts = JSON.parse(contacts)
 
-  const maxContacts = parseInt(orgFeatures.hasOwnProperty('maxContacts')
-                                ? orgFeatures.maxContacts
-                                : process.env.MAX_CONTACTS || 0, 10)
+  const maxContacts = parseInt(
+    orgFeatures.hasOwnProperty('maxContacts')
+      ? orgFeatures.maxContacts
+      : process.env.MAX_CONTACTS || 0,
+    10
+  )
 
-  if (maxContacts) { // note: maxContacts == 0 means no maximum
+  if (maxContacts) {
+    // note: maxContacts == 0 means no maximum
     contacts = contacts.slice(0, maxContacts)
   }
 
@@ -118,37 +141,52 @@ export async function uploadContacts(job) {
   }
 
   for (let index = 0; index < numChunks; index++) {
-    await updateJob(job, Math.round((maxPercentage / numChunks) * index))
-    const savePortion = contacts.slice(index * chunkSize, (index + 1) * chunkSize)
+    await updateJob(job, Math.round(maxPercentage / numChunks * index))
+    const savePortion = contacts.slice(
+      index * chunkSize,
+      (index + 1) * chunkSize
+    )
     await CampaignContact.save(savePortion)
   }
 
-  const optOutCellCount = await r.knex('campaign_contact')
+  const optOutCellCount = await r
+    .knex('campaign_contact')
     .whereIn('cell', function () {
-      this.select('cell').from('opt_out').where('organization_id', campaign.organization_id)
+      this.select('cell')
+        .from('opt_out')
+        .where('organization_id', campaign.organization_id)
     })
     .where('campaign_id', campaignId)
     .delete()
 
   if (optOutCellCount) {
-    jobMessages.push(`Number of contacts excluded due to their opt-out status: ${optOutCellCount}`)
+    jobMessages.push(
+      `Number of contacts excluded due to their opt-out status: ${optOutCellCount}`
+    )
   }
 
   if (job.id) {
     if (jobMessages.length) {
-      await r.knex('job_request').where('id', job.id)
+      await r
+        .knex('job_request')
+        .where('id', job.id)
         .update({ result_message: jobMessages.join('\n') })
     } else {
-      await r.table('job_request').get(job.id).delete()
+      await r
+        .table('job_request')
+        .get(job.id)
+        .delete()
     }
   }
 }
 
-
 export async function loadContactsFromDataWarehouse(job) {
   const sqlQuery = job.payload
   if (!sqlQuery.startsWith('SELECT') || sqlQuery.indexOf(';') >= 0) {
-    log.error('Malformed SQL statement.  Must begin with SELECT and not have any semicolons: ', sqlQuery)
+    log.error(
+      'Malformed SQL statement.  Must begin with SELECT and not have any semicolons: ',
+      sqlQuery
+    )
     return
   }
   if (!datawarehouse) {
@@ -172,70 +210,138 @@ export async function loadContactsFromDataWarehouse(job) {
     zip: 1,
     external_id: 1
   }
-  knexResult.fields.forEach((f) => {
+  knexResult.fields.forEach(f => {
     fields[f.name] = 1
-    if (! (f.name in contactFields)) {
+    if (!(f.name in contactFields)) {
       customFields[f.name] = 1
     }
   })
-  if (! ('first_name' in fields && 'last_name' in fields && 'cell' in fields)) {
-    log.error('SQL statement does not return first_name, last_name, and cell: ', sqlQuery, fields)
+  if (!('first_name' in fields && 'last_name' in fields && 'cell' in fields)) {
+    log.error(
+      'SQL statement does not return first_name, last_name, and cell: ',
+      sqlQuery,
+      fields
+    )
     return
   }
 
   // TODO break up result and save in portions, dispatched
-  const jobMessages = []
-  const savePortion = await Promise.all(knexResult.rows.map(async (row) => {
-    const contact = {
-      campaign_id: job.campaign_id,
-      first_name: row.first_name,
-      last_name: row.last_name,
-      cell: row.cell,
-      zip: row.zip,
-      external_id: row.external_id
-    }
-    const contactCustomFields = {}
-    for (const f in customFields) {
-      contactCustomFields[f] = row[f]
-    }
-    contact.custom_fields = JSON.stringify(contactCustomFields)
-    if (contact.zip) {
-      contact.timezone_offset = await getTimezoneByZip(contact.zip)
-    }
-    return contact
-  }))
+  const savePortion = await Promise.all(
+    knexResult.rows.map(async row => {
+      const contact = {
+        campaign_id: job.campaign_id,
+        first_name: row.first_name,
+        last_name: row.last_name,
+        cell: row.cell,
+        zip: row.zip,
+        external_id: row.external_id
+      }
+      const contactCustomFields = {}
+      for (const f in customFields) {
+        contactCustomFields[f] = row[f]
+      }
+      contact.custom_fields = JSON.stringify(contactCustomFields)
+      if (contact.zip) {
+        contact.timezone_offset = await getTimezoneByZip(contact.zip)
+      }
+      return contact
+    })
+  )
 
-  await r.table('campaign_contact')
+  await saveContactsAndHandleJob(job, savePortion)
+}
+
+function extractCell(phone_numbers) {
+  const primary_sms = phone_numbers.filter(
+    ({ sms_capable, primary }) => sms_capable && primary
+  )[0]
+  const sms = phone_numbers.filter(({ sms_capable }) => sms_capable)[0]
+  const primary = phone_numbers.filter(({ primary }) => primary)[0]
+  const first = phone_numbers[0]
+
+  const selection = primary_sms || sms || primary || first
+  return selection ? selection.number : null
+}
+
+function extractZip(postal_addresses) {
+  const primary_home = postal_addresses.filter(
+    ({ address_type, primary }) =>
+      address_type && address_type.toLowerCase() == 'home' && primary
+  )[0]
+  const home = postal_addresses.filter(
+    ({ address_type }) =>
+      address_type && address_type.toLowerCase() == 'home' && primary
+  )[0]
+  const primary = postal_addresses.filter(({ primary }) => primary)[0]
+  const first = postal_addresses[0]
+
+  const selection = primary_home || home || primary || first
+  return selection ? selection.postal_code : null
+}
+
+function extractExternalId(identifiers) {
+  return identifiers[0].split(':')[1]
+}
+
+export async function loadContactsFromOsdiListApi(job) {
+  const { listId, customFields } = JSON.parse(job.payload)
+
+  const savePortion = await Promise.all(
+    listItems.map(async person => {
+      const contact = {
+        campaign_id: job.campaign_id,
+        first_name: person.given_name,
+        last_name: person.family_name,
+        cell: extractCell(person.phone_numbers),
+        zip: extractZip(person.postal_addresses),
+        external_id: extractExternalId(person.identifiers),
+        custom_fields: JSON.stringify(customFields)
+      }
+
+      if (contact.zip)
+        contact.timezone_offset = await getTimezoneByZip(contact.zip)
+
+      return contact
+    })
+  )
+
+  await saveContactsAndHandleJob(job, savePortion)
+}
+
+async function saveContactsAndHandleJob(job, savePortion) {
+  const jobMessages = []
+  await r
+    .table('campaign_contact')
     .getAll(job.campaign_id, { index: 'campaign_id' })
     .delete()
-
   await CampaignContact.save(savePortion)
-
   // now that we've saved them all, we delete everyone that is opted out locally
   // doing this in one go so that we can get the DB to do the indexed cell matching
   const campaign = await Campaign.get(job.campaign_id)
-  const optOutCellCount = await r.knex('campaign_contact')
+  const optOutCellCount = await r
+    .knex('campaign_contact')
     .whereIn('cell', function () {
-      this.select('cell').from('opt_out').where('organization_id', campaign.organization_id)
+      this.select('cell')
+        .from('opt_out')
+        .where('organization_id', campaign.organization_id)
     })
     .where('campaign_id', job.campaign_id)
     .delete()
-
   console.log('OPTOUT CELL COUNT', optOutCellCount)
-
   // dispatch something that tests completion?
   if (job.id) {
     if (jobMessages.length) {
-      await r.knex('job_request').where('id', job.id)
+      await r
+        .knex('job_request')
+        .where('id', job.id)
         .update({ result_message: jobMessages.join('\n') })
     } else {
-      await r.table('job_request').get(job.id).delete()
+      await r
+        .table('job_request')
+        .get(job.id)
+        .delete()
     }
   }
-}
-
-export async function loadContactsFromOsdiListApi(listId) {
-  const client = await osdi.client(process.env.OSDI_API_URL).set('OSDI-API-Token', process.env.OSDI_API_TOKEN)
 }
 
 export async function assignTexters(job) {
@@ -271,64 +377,90 @@ export async function assignTexters(job) {
   const cid = job.campaign_id
   const campaign = (await r.knex('campaign').where({ id: cid }))[0]
   const texters = payload.texters
-  const currentAssignments = await r.knex('assignment')
+  const currentAssignments = await r
+    .knex('assignment')
     .where('assignment.campaign_id', cid)
-    .joinRaw('left join campaign_contact allcontacts'
-             + ' ON (allcontacts.assignment_id = assignment.id)')
+    .joinRaw(
+      'left join campaign_contact allcontacts' +
+        ' ON (allcontacts.assignment_id = assignment.id)'
+    )
     .groupBy('user_id', 'assignment.id')
-    .select('user_id',
-            'assignment.id as id',
-            r.knex.raw("SUM(CASE WHEN allcontacts.message_status = 'needsMessage' THEN 1 ELSE 0 END) as needs_message_count"),
-            r.knex.raw('COUNT(allcontacts.id) as full_contact_count')
-           )
+    .select(
+      'user_id',
+      'assignment.id as id',
+      r.knex.raw(
+        "SUM(CASE WHEN allcontacts.message_status = 'needsMessage' THEN 1 ELSE 0 END) as needs_message_count"
+      ),
+      r.knex.raw('COUNT(allcontacts.id) as full_contact_count')
+    )
     .catch(log.error)
 
   const unchangedTexters = {}
   const demotedTexters = {}
 
   // changedAssignments:
-  currentAssignments.map((assignment) => {
-    const texter = texters.filter((ele) => parseInt(ele.id, 10) === assignment.user_id)[0]
-    if (texter && texter.needsMessageCount === parseInt(assignment.needs_message_count, 10)) {
-      unchangedTexters[assignment.user_id] = true
-      return null
-    } else if (texter) { // assignment change
-      // If there is a delta between client and server, then accomodate delta (See #322)
-      const clientMessagedCount = texter.contactsCount - texter.needsMessageCount
-      const serverMessagedCount = assignment.full_contact_count - assignment.needs_message_count
+  currentAssignments
+    .map(assignment => {
+      const texter = texters.filter(
+        ele => parseInt(ele.id, 10) === assignment.user_id
+      )[0]
+      if (
+        texter &&
+        texter.needsMessageCount ===
+          parseInt(assignment.needs_message_count, 10)
+      ) {
+        unchangedTexters[assignment.user_id] = true
+        return null
+      } else if (texter) {
+        // assignment change
+        // If there is a delta between client and server, then accomodate delta (See #322)
+        const clientMessagedCount =
+          texter.contactsCount - texter.needsMessageCount
+        const serverMessagedCount =
+          assignment.full_contact_count - assignment.needs_message_count
 
-      const numDifferent = ((texter.needsMessageCount || 0)
-                            - assignment.needs_message_count
-                            - Math.max(0, serverMessagedCount - clientMessagedCount))
+        const numDifferent =
+          (texter.needsMessageCount || 0) -
+          assignment.needs_message_count -
+          Math.max(0, serverMessagedCount - clientMessagedCount)
 
-      if (numDifferent < 0) { // got less than before
-        demotedTexters[assignment.id] = -numDifferent
-      } else { // got more than before: assign the difference
-        texter.needsMessageCount = numDifferent
+        if (numDifferent < 0) {
+          // got less than before
+          demotedTexters[assignment.id] = -numDifferent
+        } else {
+          // got more than before: assign the difference
+          texter.needsMessageCount = numDifferent
+        }
+        return assignment
+      } else {
+        // new texter
+        return assignment
       }
-      return assignment
-    } else { // new texter
-      return assignment
-    }
-  }).filter((ele) => ele !== null)
+    })
+    .filter(ele => ele !== null)
 
   for (const assignId in demotedTexters) {
     // Here we demote ALL the demotedTexters contacts (not just the demotion count)
     // because they will get reapportioned below
-    await r.knex('campaign_contact')
-      .where('id', 'in',
-             r.knex('campaign_contact')
-             .where('assignment_id', assignId)
-             .where('message_status', 'needsMessage')
-             .select('id')
-            )
+    await r
+      .knex('campaign_contact')
+      .where(
+        'id',
+        'in',
+        r
+          .knex('campaign_contact')
+          .where('assignment_id', assignId)
+          .where('message_status', 'needsMessage')
+          .select('id')
+      )
       .update({ assignment_id: null })
       .catch(log.error)
   }
 
   await updateJob(job, 20)
 
-  let availableContacts = await r.table('campaign_contact')
+  let availableContacts = await r
+    .table('campaign_contact')
     .getAll(null, { index: 'assignment_id' })
     .filter({ campaign_id: cid })
     .count()
@@ -342,7 +474,10 @@ export async function assignTexters(job) {
     if (unchangedTexters[texterId]) {
       continue
     }
-    const contactsToAssign = Math.min(availableContacts, texter.needsMessageCount)
+    const contactsToAssign = Math.min(
+      availableContacts,
+      texter.needsMessageCount
+    )
     if (contactsToAssign === 0) {
       // avoid creating a new assignment when the texter should get 0
       if (!campaign.use_dynamic_assignment) {
@@ -350,29 +485,42 @@ export async function assignTexters(job) {
       }
     }
     availableContacts = availableContacts - contactsToAssign
-    const existingAssignment = currentAssignments.find((ele) => ele.user_id === texterId)
+    const existingAssignment = currentAssignments.find(
+      ele => ele.user_id === texterId
+    )
     let assignment = null
     if (existingAssignment) {
-      assignment = new Assignment({ id: existingAssignment.id,
-                                   user_id: existingAssignment.user_id,
-                                   campaign_id: cid })
+      assignment = new Assignment({
+        id: existingAssignment.id,
+        user_id: existingAssignment.user_id,
+        campaign_id: cid
+      })
     } else {
       assignment = await new Assignment({
         user_id: texterId,
         campaign_id: cid,
-        max_contacts: parseInt(maxContacts || process.env.MAX_CONTACTS_PER_TEXTER || 0, 10)
+        max_contacts: parseInt(
+          maxContacts || process.env.MAX_CONTACTS_PER_TEXTER || 0,
+          10
+        )
       }).save()
     }
 
     if (!campaign.use_dynamic_assignment) {
-      await r.knex('campaign_contact')
-        .where('id', 'in',
-               r.knex('campaign_contact')
-               .where({ assignment_id: null,
-                        campaign_id: cid
-                      })
-               .limit(contactsToAssign)
-               .select('id'))
+      await r
+        .knex('campaign_contact')
+        .where(
+          'id',
+          'in',
+          r
+            .knex('campaign_contact')
+            .where({
+              assignment_id: null,
+              campaign_id: cid
+            })
+            .limit(contactsToAssign)
+            .select('id')
+        )
         .update({ assignment_id: assignment.id })
         .catch(log.error)
 
@@ -386,27 +534,35 @@ export async function assignTexters(job) {
       }
     }
 
-    await updateJob(job, Math.floor((75 / texterCount) * (index + 1)) + 20)
+    await updateJob(job, Math.floor(75 / texterCount * (index + 1)) + 20)
   }
 
   if (!campaign.use_dynamic_assignment) {
     // dynamic assignments, having zero initially initially is ok
-    const assignmentsToDelete = r.knex('assignment')
+    const assignmentsToDelete = r
+      .knex('assignment')
       .where('assignment.campaign_id', cid)
-      .leftJoin('campaign_contact', 'assignment.id', 'campaign_contact.assignment_id')
+      .leftJoin(
+        'campaign_contact',
+        'assignment.id',
+        'campaign_contact.assignment_id'
+      )
       .groupBy('assignment.id')
       .havingRaw('COUNT(campaign_contact.id) = 0')
       .select('assignment.id as id')
 
-    await r.knex('assignment')
+    await r
+      .knex('assignment')
       .where('id', 'in', assignmentsToDelete)
       .delete()
       .catch(log.error)
   }
 
-
   if (job.id) {
-    await r.table('job_request').get(job.id).delete()
+    await r
+      .table('job_request')
+      .get(job.id)
+      .delete()
   }
 }
 
@@ -418,10 +574,11 @@ export async function exportCampaign(job) {
   const user = await User.get(requester)
   const allQuestions = {}
   const questionCount = {}
-  const interactionSteps = await r.table('interaction_step')
+  const interactionSteps = await r
+    .table('interaction_step')
     .getAll(id, { index: 'campaign_id' })
 
-  interactionSteps.forEach((step) => {
+  interactionSteps.forEach(step => {
     if (!step.question || step.question.trim() === '') {
       return
     }
@@ -441,26 +598,36 @@ export async function exportCampaign(job) {
 
   let finalCampaignResults = []
   let finalCampaignMessages = []
-  const assignments = await r.knex('assignment')
+  const assignments = await r
+    .knex('assignment')
     .where('campaign_id', id)
     .join('user', 'user_id', 'user.id')
-    .select('assignment.id as id',
-            // user fields
-            'first_name', 'last_name', 'email', 'cell', 'assigned_cell')
+    .select(
+      'assignment.id as id',
+      // user fields
+      'first_name',
+      'last_name',
+      'email',
+      'cell',
+      'assigned_cell'
+    )
   const assignmentCount = assignments.length
 
   for (let index = 0; index < assignmentCount; index++) {
     const assignment = assignments[index]
-    const optOuts = await r.table('opt_out')
+    const optOuts = await r
+      .table('opt_out')
       .getAll(assignment.id, { index: 'assignment_id' })
 
-    const contacts = await r.knex('campaign_contact')
+    const contacts = await r
+      .knex('campaign_contact')
       .leftJoin('zip_code', 'zip_code.zip', 'campaign_contact.zip')
       .select()
       .where('assignment_id', assignment.id)
-    const messages = await r.table('message')
+    const messages = await r
+      .table('message')
       .getAll(assignment.id, { index: 'assignment_id' })
-    let convertedMessages = messages.map((message) => {
+    let convertedMessages = messages.map(message => {
       const messageRow = {
         assignmentId: message.assignment_id,
         campaignId: campaign.id,
@@ -476,7 +643,7 @@ export async function exportCampaign(job) {
 
     convertedMessages = await Promise.all(convertedMessages)
     finalCampaignMessages = finalCampaignMessages.concat(convertedMessages)
-    let convertedContacts = contacts.map(async (contact) => {
+    let convertedContacts = contacts.map(async contact => {
       const contactRow = {
         campaignId: campaign.id,
         campaign: campaign.title,
@@ -492,21 +659,24 @@ export async function exportCampaign(job) {
         'contact[zip]': contact.zip,
         'contact[city]': contact.city ? contact.city : null,
         'contact[state]': contact.state ? contact.state : null,
-        'contact[optOut]': optOuts.find((ele) => ele.cell === contact.cell) ? 'true' : 'false',
+        'contact[optOut]': optOuts.find(ele => ele.cell === contact.cell)
+          ? 'true'
+          : 'false',
         'contact[messageStatus]': contact.message_status,
         'contact[external_id]': contact.external_id
       }
       const customFields = JSON.parse(contact.custom_fields)
-      Object.keys(customFields).forEach((fieldName) => {
+      Object.keys(customFields).forEach(fieldName => {
         contactRow[`contact[${fieldName}]`] = customFields[fieldName]
       })
 
-      const questionResponses = await r.table('question_response')
+      const questionResponses = await r
+        .table('question_response')
         .getAll(contact.id, { index: 'campaign_contact_id' })
 
-      Object.keys(allQuestions).forEach((stepId) => {
+      Object.keys(allQuestions).forEach(stepId => {
         let value = ''
-        questionResponses.forEach((response) => {
+        questionResponses.forEach(response => {
           if (response.interaction_step_id === parseInt(stepId, 10)) {
             value = response.value
           }
@@ -524,8 +694,13 @@ export async function exportCampaign(job) {
   const campaignCsv = Papa.unparse(finalCampaignResults)
   const messageCsv = Papa.unparse(finalCampaignMessages)
 
-  if (process.env.AWS_ACCESS_AVAILABLE || (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY)) {
-    const s3bucket = new AWS.S3({ params: { Bucket: process.env.AWS_S3_BUCKET_NAME } })
+  if (
+    process.env.AWS_ACCESS_AVAILABLE ||
+    (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY)
+  ) {
+    const s3bucket = new AWS.S3({
+      params: { Bucket: process.env.AWS_S3_BUCKET_NAME }
+    })
     const campaignTitle = campaign.title.replace(/ /g, '_').replace(/\//g, '_')
     const key = `${campaignTitle}-${moment().format('YYYY-MM-DD-HH-mm-ss')}.csv`
     const messageKey = `${key}-messages.csv`
@@ -536,7 +711,10 @@ export async function exportCampaign(job) {
     params = { Key: messageKey, Body: messageCsv }
     await s3bucket.putObject(params).promise()
     params = { Key: messageKey, Expires: 86400 }
-    const campaignMessagesExportUrl = await s3bucket.getSignedUrl('getObject', params)
+    const campaignMessagesExportUrl = await s3bucket.getSignedUrl(
+      'getObject',
+      params
+    )
     await sendEmail({
       to: user.email,
       subject: `Export ready for ${campaign.title}`,
@@ -554,7 +732,10 @@ export async function exportCampaign(job) {
   }
 
   if (job.id) {
-    await r.table('job_request').get(job.id).delete()
+    await r
+      .table('job_request')
+      .get(job.id)
+      .delete()
   }
 }
 
@@ -562,7 +743,8 @@ export async function exportCampaign(job) {
 let pastMessages = []
 
 export async function sendMessages(queryFunc, defaultStatus) {
-  let messages = r.knex('message')
+  let messages = r
+    .knex('message')
     .where({ send_status: defaultStatus || 'QUEUED' })
 
   if (queryFunc) {
@@ -573,12 +755,19 @@ export async function sendMessages(queryFunc, defaultStatus) {
   for (let index = 0; index < messages.length; index++) {
     let message = messages[index]
     if (pastMessages.indexOf(message.id) !== -1) {
-      throw new Error('Encountered send message request of the same message.'
-                      + ' This is scary!  If ok, just restart process. Message ID: ' + message.id)
+      throw new Error(
+        'Encountered send message request of the same message.' +
+          ' This is scary!  If ok, just restart process. Message ID: ' +
+          message.id
+      )
     }
     message.service = message.service || process.env.DEFAULT_SERVICE
     const service = serviceMap[message.service]
-    log.info(`Sending (${message.service}): ${message.user_number} -> ${message.contact_number}\nMessage: ${message.text}`)
+    log.info(
+      `Sending (${message.service}): ${message.user_number} -> ${
+        message.contact_number
+      }\nMessage: ${message.text}`
+    )
     await service.sendMessage(message)
     pastMessages.push(message.id)
     pastMessages = pastMessages.slice(-100) // keep the last 100
@@ -588,7 +777,7 @@ export async function sendMessages(queryFunc, defaultStatus) {
 export async function handleIncomingMessageParts() {
   const messageParts = await r.table('pending_message_part').limit(100)
   const messagePartsByService = {}
-  messageParts.forEach((m) => {
+  messageParts.forEach(m => {
     if (m.service in serviceMap) {
       if (!(m.service in messagePartsByService)) {
         messagePartsByService[m.service] = []
@@ -602,7 +791,7 @@ export async function handleIncomingMessageParts() {
     if (service.syncMessagePartProcessing) {
       // filter for anything older than ten minutes ago
       const tenMinutesAgo = new Date(new Date() - 1000 * 60 * 10)
-      allParts = allParts.filter((part) => (part.created_at < tenMinutesAgo))
+      allParts = allParts.filter(part => part.created_at < tenMinutesAgo)
     }
     const allPartsCount = allParts.length
     if (allPartsCount === 0) {
@@ -616,22 +805,33 @@ export async function handleIncomingMessageParts() {
     for (let i = 0; i < allPartsCount; i++) {
       const part = allParts[i]
       const serviceMessageId = part.service_id
-      const savedCount = await r.table('message')
+      const savedCount = await r
+        .table('message')
         .getAll(serviceMessageId, { index: 'service_id' })
         .count()
       const lastMessage = await getLastMessage({
         contactNumber: part.contact_number,
         service: serviceKey
       })
-      const duplicateMessageToSaveExists = !!messagesToSave.find((message) => message.service_id === serviceMessageId)
+      const duplicateMessageToSaveExists = !!messagesToSave.find(
+        message => message.service_id === serviceMessageId
+      )
       if (!lastMessage) {
         log.info('Received message part with no thread to attach to', part)
         messagePartsToDelete.push(part)
       } else if (savedCount > 0) {
-        log.info(`Found already saved message matching part service message ID ${part.service_id}`)
+        log.info(
+          `Found already saved message matching part service message ID ${
+            part.service_id
+          }`
+        )
         messagePartsToDelete.push(part)
       } else if (duplicateMessageToSaveExists) {
-        log.info(`Found duplicate message to be saved matching part service message ID ${part.service_id}`)
+        log.info(
+          `Found duplicate message to be saved matching part service message ID ${
+            part.service_id
+          }`
+        )
         messagePartsToDelete.push(part)
       } else {
         const parentId = part.parent_id
@@ -665,7 +865,7 @@ export async function handleIncomingMessageParts() {
       const groupKey = keys[i]
       const messageParts = concatMessageParts[groupKey]
 
-      if (messageParts.filter((part) => part === null).length === 0) {
+      if (messageParts.filter(part => part === null).length === 0) {
         messagePartsToDelete = messagePartsToDelete.concat(messageParts)
         const message = await convertMessageParts(messageParts)
         messagesToSave.push(message)
@@ -674,13 +874,17 @@ export async function handleIncomingMessageParts() {
 
     const messageCount = messagesToSave.length
     for (let i = 0; i < messageCount; i++) {
-      log.info('Saving message with service message ID', messagesToSave[i].service_id)
+      log.info(
+        'Saving message with service message ID',
+        messagesToSave[i].service_id
+      )
       await saveNewIncomingMessage(messagesToSave[i])
     }
 
-    const messageIdsToDelete = messagePartsToDelete.map((m) => m.id)
+    const messageIdsToDelete = messagePartsToDelete.map(m => m.id)
     log.info('Deleting message parts', messageIdsToDelete)
-    await r.table('pending_message_part')
+    await r
+      .table('pending_message_part')
       .getAll(...messageIdsToDelete)
       .delete()
   }
@@ -690,7 +894,8 @@ export async function clearOldJobs(delay) {
   // to clear out old stuck jobs
   const twoHoursAgo = new Date(new Date() - 1000 * 60 * 60 * 2)
   delay = delay || twoHoursAgo
-  return await r.knex('job_request')
+  return await r
+    .knex('job_request')
     .where({ assigned: true })
     .where('updated_at', '<', delay)
     .delete()

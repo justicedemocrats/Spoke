@@ -8,6 +8,7 @@ import Divider from 'material-ui/Divider'
 import { ListItem, List } from 'material-ui/List'
 import { parseCSV } from '../lib'
 import CampaignFormSectionHeading from './CampaignFormSectionHeading'
+import ExternalListNavigator from './ExternalListNavigator'
 import CheckIcon from 'material-ui/svg-icons/action/check-circle'
 import WarningIcon from 'material-ui/svg-icons/alert/warning'
 import ErrorIcon from 'material-ui/svg-icons/alert/error'
@@ -192,7 +193,7 @@ export default class CampaignContactsForm extends React.Component {
   }
 
   renderForm() {
-    const { contactUploadError, contactSqlError } = this.state
+    const { contactUploadError, contactSqlError, contactOsdiError } = this.state
     return (
       <div>
         {!this.props.jobResultMessage ? '' : (
@@ -215,6 +216,7 @@ export default class CampaignContactsForm extends React.Component {
           }}
         >
           {this.renderUploadButton()}
+
           {!this.props.datawarehouseAvailable ? '' : (
             <div>
               <div>
@@ -255,6 +257,14 @@ export default class CampaignContactsForm extends React.Component {
 
             </div>
           )}
+
+          {this.props.osdiEnabled && (
+            <div> 
+              Instead of uploading contacts, your admin has enabled pulling lists directly from your CRM.
+              <ExternalListNavigator organizationId={this.props.organizationId} />
+            </div>
+          )}
+
           {this.renderContactStats()}
           {this.renderValidationStats()}
           {contactUploadError ? (
@@ -303,6 +313,7 @@ export default class CampaignContactsForm extends React.Component {
 
 CampaignContactsForm.propTypes = {
   datawarehouseAvailable: type.bool,
+  osdiEnabled: type.bool,
   onChange: type.func,
   optOuts: type.array,
   formValues: type.object,

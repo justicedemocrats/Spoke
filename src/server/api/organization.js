@@ -1,6 +1,7 @@
 import { mapFieldsToModel } from './lib/utils'
 import { r, Organization } from '../models'
 import { accessRequired, hasOsdiConfigured } from './errors'
+import axios from 'axios'
 
 export const schema = `
   type Organization {
@@ -42,16 +43,24 @@ export const resolvers = {
     },
     osdiLists: async (organization, { osdiListFilter }, { user }) => {
       await hasOsdiConfigured(organization)
-      const client = await osdi.client(organization.features.osdiApiUrl).set('OSDI-API-Token', process.env.osdiApiToken)
-
+      const {osdiApiUrl, osdiApiToken} = JSON.parse(organization.features)
+    
+      let page = 1
       let lists = []
-      let res = client.parse(await client.getLists())
+      let res = await axios.get(`${osdiApiUrl}/lists`, {
+        headers: {'OSDI-API-Token': osdiApiToken},
+        params: {page}
+      })
 
-      lists = lists.contact(res.lists)
+      while (res.data._links.next) {
+        page++
 
-      while (res.nextPage) {
-        res = client.parse(await res.nextPage())
-        lists = lists.contact(res.lists)
+        res = await axios.get(`${osdiApiUrl}/lists`, {
+          headers: {'OSDI-API-Token': osdiApiToken},
+          params: {page}
+        })
+
+        lists = lists.concat(res.data._embedded['osdi:lists'])
       }
 
       return lists
